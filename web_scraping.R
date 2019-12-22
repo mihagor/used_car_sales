@@ -178,32 +178,3 @@ all_scraped_car_ads <- bind_rows(old_scraped_car_ads, car_ad_data)
 all_scraped_car_ads %<>% distinct()
 
 write_csv2(car_ad_data, path = paste0("scraped_car_ads/", format(Sys.Date(), "%Y%m%d"), "_scraped_car_ad_data.csv"), append = TRUE, col_names = TRUE)
-
-
-
-
-
-
-
-
-
-# prva stran - Megan 14.12.2019 ob 20:51 zadnji oglas
-n1_page <- 14876956
-
-# 5. stran custom search last position
-n5_page <- 14846208
-
-# 10. stran custom search last position
-n10_page <- 14758075
-
-# 31k oglasov med 5 stranmi, za cca. 235 relevantnih oglasov (47 oglasov na stran)
-n1_page - n5_page
-
-# 120k oglasov med 10 stranmi, za cca. 470 relevantnih oglasov (47 oglasov na stran)
-n1_page - n10_page
-
-
-
-
-
-
