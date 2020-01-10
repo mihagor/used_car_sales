@@ -1,38 +1,70 @@
+here::here()
+
 # avto.net apliakcija za spremljanje cene karavanov in enoprostorcev
-
+start_time <- Sys.time()
+message("Starting avto.net web scraping ... ", start_time)
+message("Loading packages ...")
 library(pacman)
-p_load(rvest, jsonlite, tidyverse, xopen, polite, robotstxt, curl, httr, magrittr, lubridate, cronR, shinyFiles)
+p_load(rvest, jsonlite, tidyverse, xopen, polite, robotstxt, curl, httr, magrittr, lubridate)
 
+message("Working directory ...")
+if (getwd() != "/Users/mihagornik/projects/avto_net/used_car_sales") {setwd("/Users/mihagornik/projects/avto_net/used_car_sales")}
+getwd()
 # No valid robots
 # rt <- robotstxt(domain = "avto.net")
 
 
 # oblika 13 = karavan
 # oblika 14 = enoprostorec
-# %2C = , 
+# %2C = URL escape za presledek, 
 # 17.12.2019 - 2657 zadetkov
-# samo 21 page-ov prikaže naenkrat
-url_karavan <- "https://www.avto.net/Ads/results.asp?znamka=&model=&modelID=&tip=&znamka2=&model2=&tip2=&znamka3=&model3=&tip3=&cenaMin=0&cenaMax=15000&letnikMin=2008&letnikMax=2090&bencin=202&starost2=999&oblika=13&ccmMin=0&ccmMax=99999&mocMin=&mocMax=&kmMin=0&kmMax=150000&kwMin=0&kwMax=999&motortakt=0&motorvalji=0&lokacija=0&sirina=0&dolzina=&dolzinaMIN=0&dolzinaMAX=100&nosilnostMIN=0&nosilnostMAX=999999&lezisc=&presek=0&premer=0&col=0&vijakov=0&EToznaka=0&vozilo=&airbag=&barva=&barvaint=&EQ1=1000000000&EQ2=1000000000&EQ3=1000000000&EQ4=100000000&EQ5=1000000000&EQ6=1000000000&EQ7=1110100020&EQ8=1010000001&EQ9=1000000000&KAT=1010000000&PIA=&PIAzero=&PSLO=&akcija=0&paketgarancije=&broker=0&prikazkategorije=0&kategorija=0&zaloga=10&arhiv=0&presort=3&tipsort=DESC&stran="
-url_enopros <- "https://www.avto.net/Ads/results.asp?znamka=&model=&modelID=&tip=&znamka2=&model2=&tip2=&znamka3=&model3=&tip3=&cenaMin=0&cenaMax=15000&letnikMin=2008&letnikMax=2090&bencin=202&starost2=999&oblika=14&ccmMin=0&ccmMax=99999&mocMin=&mocMax=&kmMin=0&kmMax=150000&kwMin=0&kwMax=999&motortakt=0&motorvalji=0&lokacija=0&sirina=0&dolzina=&dolzinaMIN=0&dolzinaMAX=100&nosilnostMIN=0&nosilnostMAX=999999&lezisc=&presek=0&premer=0&col=0&vijakov=0&EToznaka=0&vozilo=&airbag=&barva=&barvaint=&EQ1=1000000000&EQ2=1000000000&EQ3=1000000000&EQ4=100000000&EQ5=1000000000&EQ6=1000000000&EQ7=1110100020&EQ8=1010000001&EQ9=1000000000&KAT=1010000000&PIA=&PIAzero=&PSLO=&akcija=0&paketgarancije=&broker=0&prikazkategorije=0&kategorija=0&zaloga=10&arhiv=0&presort=3&tipsort=DESC&stran="       
-page <- c(1:10)
+# samo 21 page-ov prikaže naenkrat - scraping delamo na 20 pagih
+page <- c(1:20)
 
-search_page_karavan <- paste0(url_karavan, page)
-search_page_enopros <- paste0(url_enopros, page)
-
-
-# check url connection
-stopifnot(http_status(GET(url_karavan))$category == "Success")
-stopifnot(http_status(GET(url_enopros))$category == "Success")
-
-# web scraping card ad ID in last 10 pages 
-get_page_ad_ids <- function(search_page, ...) {
+# web scraping card ad ID in last 20 pages 
+get_page_ad_ids <- function(oblika, ...) {
   
   page <- page
   
   scraped_ids <- c()
   
   for (i in page) {
-    ex_page <- read_html(search_page[i])
+    
+    get_request <- 
+      GET(url = "https://www.avto.net/Ads/results.asp?",
+        query = list(cenaMin	     = 	'0', 
+                     cenaMax       = 	'999999',
+                     letnikMin	   = 	'0',
+                     letnikMax	   = 	'2090',
+                     bencin	       = 	'0',
+                     starost2	     = 	'999',
+                     oblika	       = 	oblika,
+                     ccmMin	       = 	'0',
+                     ccmMax	       = 	'99999',
+                     kmMin	       = 	'0',
+                     kmMax	       = 	'9999999',
+                     kwMin	       = 	'0',
+                     kwMax	       = 	'999',
+                     lokacija	     = 	'0',
+                     EQ1	         = 	'1000000000',
+                     EQ2	         = 	'1000000000',
+                     EQ3	         = 	'1000000000',
+                     EQ4	         = 	'100000000',
+                     EQ5	         = 	'1000000000',
+                     EQ6	         = 	'1000000000',
+                     EQ7	         = 	'1110100120',
+                     EQ8	         = 	'1010000001',
+                     EQ9	         = 	'1000000000',
+                     KAT	         = 	'1010000000',
+                     paketgarancije = 	'0',
+                     zaloga	       = '10',
+                     stran	       = 	i
+        )
+    )
+    message(get_request$url)
+    stop_for_status(get_request)
+    
+    ex_page <- content(get_request, encoding = "windows-1250")
     num_ads <- length(ex_page %>% html_nodes(".Adlink"))
     
     page_ids <- 
@@ -59,24 +91,25 @@ get_page_ad_ids <- function(search_page, ...) {
   return(scraped_ids)
 }
 
-
-ad_ids_karavan <- get_page_ad_ids(search_page_karavan)
-ad_ids_enopros <- get_page_ad_ids(search_page_enopros)
+message("Scraping page ids ...")
+ad_ids_karavan <- get_page_ad_ids("13")
+ad_ids_enopros <- get_page_ad_ids("14")
 
 combined_scraped_ids <- c(ad_ids_karavan, ad_ids_enopros)
 new_scraped_car_ids <- combined_scraped_ids %>% unique(.)
 
-
-old_scraped_car_ids <- read_csv2(paste0("scraped_car_ids/", format(Sys.Date() - days(1), "%Y%m%d"), "_scraped_car_ads.csv")) 
+message("Getting old ad ids ...")
+old_scraped_car_ids <- read_csv2(paste0("scraped_car_ids/", max(list.files(path = "scraped_car_ids/", pattern = "*.csv")))) 
 old_scraped_car_ids %<>% pull(value)
 
 # all new car ads for further web scraping
 new_car_ads <- new_scraped_car_ids[!(new_scraped_car_ids %in% old_scraped_car_ids)]
 
-
 car_ad_data <- tibble()
 counter <- 1
 
+message(paste0("Number of new car ads: ", length(new_car_ads)))
+message("Starting to scrape new car ads ...")
 # web scraping car ad DATA for new ads
 for (i in new_car_ads) {
           
@@ -146,14 +179,15 @@ for (i in new_car_ads) {
     names(car_ad_comment) <- "Opomba"
     car_ad_comment <- enframe(car_ad_comment) %>% mutate(attribute = "value1") %>% select(name, attribute, value)
     
+    scrape_date <- tibble(name = "Datum uvoza", attribute = "value1", value = format(now(), "%Y%m%d"))
     
     # final loop data
-    car_ad_data_temp <- bind_rows(car_names, car_price, car_data, car_ad_properties, car_ad_comment) %>% mutate(id_ad = i) %>% select(id_ad, everything())
+    car_ad_data_temp <- bind_rows(car_names, car_price, car_data, car_ad_properties, car_ad_comment, scrape_date) %>% mutate(id_ad = i) %>% select(id_ad, everything())
     
     car_ad_data <- bind_rows(car_ad_data, car_ad_data_temp)
     
   }
-      
+    
   
   sleep_time <- runif(1, min = 3, max = 17)
   message(paste("Completed:", round(counter/length(new_car_ads) * 100, 2), "%", "\nIteration number:", counter, "\nSleeping for", round(sleep_time, 0), "seconds"))
@@ -162,19 +196,26 @@ for (i in new_car_ads) {
   counter <- counter + 1
 }
 
+message("Finished scraping car ads ...")
+
  # archive scraped car ad IDs
 new_scraped_car_ad_ids <- car_ad_data %>% select(id_ad) %>% distinct() %>% pull()
 all_scraped_car_ids <- c(old_scraped_car_ids, new_scraped_car_ad_ids)
 all_scraped_car_ids %<>% unique(.)
 
-write_csv2(enframe(all_scraped_car_ids), path = paste0("scraped_car_ids/", format(Sys.Date(), "%Y%m%d"), "_scraped_car_ads.csv"), append = TRUE, col_names = TRUE) 
-
+message("Exporting car ads ids ...")
+write_csv2(enframe(all_scraped_car_ids), path = paste0("scraped_car_ids/", format(Sys.Date(), "%Y%m%d"), "_scraped_car_ads.csv"), col_names = TRUE) 
 
 # archive car ad data
-old_scraped_car_ads <- read_csv2(paste0("scraped_car_ads/", format(Sys.Date() - days(1), "%Y%m%d"), "_scraped_car_ad_data.csv"))
+old_scraped_car_ads <- read_csv2(paste0("scraped_car_ads/", max(list.files(path = "scraped_car_ads/", pattern = "*.csv"))))
 
 car_ad_data %<>% mutate(id_ad = as.double(id_ad))
 all_scraped_car_ads <- bind_rows(old_scraped_car_ads, car_ad_data)
 all_scraped_car_ads %<>% distinct()
 
-write_csv2(car_ad_data, path = paste0("scraped_car_ads/", format(Sys.Date(), "%Y%m%d"), "_scraped_car_ad_data.csv"), append = TRUE, col_names = TRUE)
+message("Exporting car ad data ...")
+write_csv2(all_scraped_car_ads, path = paste0("scraped_car_ads/", format(Sys.Date(), "%Y%m%d"), "_scraped_car_ad_data.csv"), col_names = TRUE)
+
+finish_time <- Sys.time()
+message(glue::glue("Finished avto.net web scraping ... , {finish_time}\n Job took: {round(difftime(finish_time, start_time, units = 'min'))} minutes"))
+

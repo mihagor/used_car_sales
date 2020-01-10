@@ -1,4 +1,5 @@
 # avto.net search parameters for dimensions
+here::here()
 
 ##### META SECTION #####
 
@@ -43,5 +44,15 @@ params %<>%
 params %<>% distinct()
 
 
+params %<>% 
+      group_by(id) %>%
+      mutate(name = paste0("value", seq_along(id))) %>% 
+      select(attribute = id, name, value) %>% 
+      filter(!(value %in% c("Izberite znamko", "---------------------------", "Izberite model", "modela ni na seznamu")))
 
+params %<>% 
+      ungroup() %>% 
+      mutate(attribute = str_to_sentence(attribute))
 
+# izvoz parametrov 
+write_csv2(params, path = paste0("scraped_parameters/", format(Sys.Date(), "%Y%m%d"), "_scraped_parameters.csv"), col_names = TRUE)
