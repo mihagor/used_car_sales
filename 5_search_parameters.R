@@ -46,8 +46,8 @@ params %<>% distinct()
 
 params %<>% 
       group_by(id) %>%
-      mutate(name = paste0("value", seq_along(id))) %>% 
-      select(attribute = id, name, value) %>% 
+      mutate(attribute = paste0("value", seq_along(id))) %>% 
+      select(name = id, attribute, value) %>% 
       filter(!(value %in% c("Izberite znamko", "---------------------------", "Izberite model", "modela ni na seznamu")))
 
 params %<>% 

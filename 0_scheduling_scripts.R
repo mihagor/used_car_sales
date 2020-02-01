@@ -1,6 +1,6 @@
 library(cronR, shinyFiles)
 
-f <- file.path("/Users/mihagornik/projects/avto_net/used_car_sales/web_scraping.R")
+f <- file.path("/Users/mihagornik/projects/avto_net/used_car_sales/2_web_scraping.R")
 cmd <- cron_rscript(f)
 
 ## Every day at 22:01

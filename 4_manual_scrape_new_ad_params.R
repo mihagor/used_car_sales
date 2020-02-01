@@ -31,7 +31,7 @@ tables %>% xml_find_all(".//br") %>% xml_remove()
 
 tables %<>% 
       html_text() %>% 
-      as_tibble() %>% 
+      enframe(name = NULL) %>% 
       separate(value, c("attribute", paste0("value", 1:55)), sep = "\n", fill = "right") %>% 
       mutate_all(~str_squish(.)) %>%
       mutate_all(~na_if(., "")) %>%
@@ -43,11 +43,12 @@ tables %<>%
 tables %<>% 
       group_by(attribute) %>% 
       mutate(name = paste0("value", seq_along(attribute))) %>%
-      mutate(value = str_remove(value, ":$"))
+      mutate(value = str_remove(value, ":$")) %>%
+      rename(attribute = name, name = attribute)
 
 
 write_csv2(tables, path = paste0("manual_add_new_ad/parameters/", format(Sys.Date(), "%Y%m%d"), "_new_ad_parameters.csv"), col_names = TRUE)
 
 
-message("Izvoženi parametri za: ", paste(unique(tables$attribute), collapse = ", "))
+message("Izvoženi parametri za: ", paste(unique(tables$name), collapse = ", "))
 

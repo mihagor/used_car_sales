@@ -1,0 +1,7 @@
+## cronR job
+## id:   job_b24b1cef96fe8da7ebe307586d048c3e
+## tags: 
+## desc: I execute things
+33 20 * * * /Library/Frameworks/R.framework/Resources/bin/Rscript '/Users/mihagornik/projects/avto_net/used_car_sales/web_scraping.R'  >> '/Users/mihagornik/projects/avto_net/used_car_sales/web_scraping.log' 2>&1
+
+ 
