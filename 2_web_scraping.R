@@ -16,9 +16,9 @@ getwd()
 
 # oblika 13 = karavan
 # oblika 14 = enoprostorec
-# %2C = URL escape za presledek, 
-# 17.12.2019 - 2657 zadetkov
+# %2C = URL escape za presledek
 # samo 21 page-ov prikaže naenkrat - scraping delamo na 20 pagih
+# verbose() pokaže pot redirectiona
 page <- c(1:20)
 
 # web scraping card ad ID in last 20 pages 
@@ -31,8 +31,9 @@ get_page_ad_ids <- function(oblika, ...) {
   for (i in page) {
     
     get_request <- 
-      GET(url = "https://www.avto.net/Ads/results.asp?",
-        query = list(cenaMin	     = 	'0', 
+      GET(url = "https://www.avto.net/Ads/results.asp?", 
+          user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:70.0) Gecko/20100101 Firefox/70.0"),
+          query = list(cenaMin	     = 	'0', 
                      cenaMax       = 	'999999',
                      letnikMin	   = 	'0',
                      letnikMax	   = 	'2090',
@@ -57,25 +58,29 @@ get_page_ad_ids <- function(oblika, ...) {
                      EQ9	         = 	'1000000000',
                      KAT	         = 	'1010000000',
                      paketgarancije = 	'0',
-                     zaloga	       = '10',
+                     zaloga	       =    '10',
                      stran	       = 	i
         )
     )
+    
+    
     message(get_request$url)
     stop_for_status(get_request)
     
     ex_page <- content(get_request, encoding = "windows-1250")
-    num_ads <- length(ex_page %>% html_nodes(".Adlink"))
+    num_ads <- length(ex_page %>% html_nodes(".stretched-link"))
     
     page_ids <- 
               ex_page %>% 
-              html_nodes(".Adlink") %>% 
+              html_nodes(".stretched-link") %>% 
               html_attr("href") %>%
               str_extract("(?<=id\\=)[0-9]{8}(?=&display)") # pred digiti mora biti 'id=', za njimi pa '&display'
+      
+    page_ids <- page_ids[!is.na(page_ids)]
               
-    if (length(page_ids) != num_ads) {
-              stop("Number of extracted ids is not equal to number of ads!") 
-    }
+    # if (length(page_ids) != num_ads) {
+              # stop("Number of extracted ids is not equal to number of ads!") 
+    # }
     
     scraped_ids <- c(scraped_ids, page_ids)
     
@@ -104,72 +109,116 @@ old_scraped_car_ids %<>% pull(value)
 
 # all new car ads for further web scraping
 new_car_ads <- new_scraped_car_ids[!(new_scraped_car_ids %in% old_scraped_car_ids)]
+new_car_ads<- new_car_ads %>% as.numeric()
 
 car_ad_data <- tibble()
 counter <- 1
 
 message(paste0("Number of new car ads: ", length(new_car_ads)))
 message("Starting to scrape new car ads ...")
+
+
 # web scraping car ad DATA for new ads
 for (i in new_car_ads) {
           
   car_ad <- read_html(paste0("https://www.avto.net/Ads/details.asp?id=", i)) 
 
-  if(length(car_ad %>% html_nodes(".OglasDataTitle")) == 0) {
+  
+  if (length(car_ad %>% html_nodes(xpath = "//div[@class='container bg-white GO-Rounded-B GO-Shadow-B m-0 pb-3 mb-3 sticky-top']")) == 0) {
     next
     
   } else {
     
     # Cena
-    car_price <- car_ad %>% html_nodes(".OglasDataCenaTOP")
-    if (length(car_price) > 0) {
-      car_price <- car_price %>% html_text() %>% str_extract_all("[0-9]") %>% unlist() %>% paste0(collapse = "")
+    special_price <- car_ad %>% html_nodes(xpath = "//p[@class='h2 font-weight-bold text-danger mb-3']")
+    normal_pride <- car_ad %>% html_nodes(xpath = "//p[@class='h2 font-weight-bold align-middle py-4 mb-0']")
+    if (length(special_price) > 0) {
+      car_price <- special_price %>% extract2(1) %>% html_text() %>% str_extract_all("[0-9]") %>% unlist() %>% paste0(collapse = "")
+    } else if (length(normal_pride) > 0) {
+      car_price <- normal_pride %>% extract2(1) %>% html_text() %>% str_extract_all("[0-9]") %>% unlist() %>% paste0(collapse = "")
     } else {
-      car_price <- car_ad %>% html_nodes(".OglasDataAkcijaCena") %>% html_text() %>% str_extract_all("[0-9]") %>% unlist() %>% paste0(collapse = "")    
+      car_price <- NA_integer_
     }
     names(car_price) <- "Cena"
     car_price <- enframe(car_price) %>% mutate(attribute = "value1") %>% select(name, attribute, value)
     
     
     # Naziv
-    car_name_node <- car_ad %>% html_nodes(".OglasDataTitle")
-    car_name <- car_name_node %>% as.character() %>% str_extract(("(?<=\\<h1\\>).*(?=\\<small\\>)")) %>% str_squish()
-    car_name_full <- car_name_node %>% html_text() %>% str_squish()
+    car_name_node <- car_ad %>% html_nodes(xpath = "//div[@class='col-12 mt-3 pt-1']")
+    
+    if (length(car_name_node) > 0) {
+      car_name <- car_name_node %>% as.character() %>% str_extract(("(?<=\\<h3\\>).*(?=\\<small\\>)")) %>% str_squish() %>% last()
+      car_name_full <- car_name_node %>% html_text() %>% str_squish() %>% last()
+    } else {
+      car_name <- NA_character_
+      car_name_full <- NA_character_
+    }
     names(car_name) <- "Kratek naziv avtomobila"
     names(car_name_full) <- "Dolg naziv avtomobila"
     car_names <- enframe(c(car_name, car_name_full)) %>% mutate(attribute = "value1") %>% select(name, attribute, value)
     
     
-    # Osnovni podatki
-    car_ad_data_name <- car_ad %>% html_nodes(".OglasDataLeft") %>% html_text()
-    car_ad_data_value <- car_ad %>% html_nodes(".OglasDataRight") %>% html_text()
     
-    car_data <- bind_cols(name = car_ad_data_name, value = car_ad_data_value)
-    car_data %<>% 
-      mutate(value = str_squish(str_remove(value, "\r|\n|\t"))) %>%
-      mutate(name = str_remove(name, ":")) %>%
-      mutate(attribute = "value1") %>%
-      select(name, attribute, value)
+    car_ad_tables <- car_ad %>% html_nodes(xpath = "//table[@class='table table-sm']") %>% html_table()
+    car_ad_tables_names <- car_ad_tables %>% map(~names(.)) %>% transpose(.) %>% map_dfc(~unlist(as_tibble(.))) %>% select(V1)
     
+    if (nrow(car_ad_tables_names %>% filter(V1 == "Osnovni podatki")) == 1) {
+      # Tabela 1: Osnovni podatki
+      car_ad_basic_data <- 
+        car_ad_tables %>% 
+        extract2(1) %>% 
+        set_names(c("name", "value")) %>% 
+        filter(row_number() != 1) %>%  
+        mutate(value = str_squish(value)) %>%
+        mutate(name = str_remove_all(name, ":"))
+    } else {
+      car_ad_basic_data <- NA
+      names(car_ad_basic_data) <- "Osnovni podatki"
+      car_ad_basic_data <- enframe(car_ad_basic_data)
+    }
     
-    # Podrobni podatki
-    car_ad_properties_name <- car_ad %>% html_nodes(".OglasEQLeft") %>% html_text() %>% str_remove(":")
-    car_ad_properties_value <- car_ad %>% html_nodes(".OglasEQRightWrapper") %>% as.character() 
-    car_ad_properties <- bind_cols(name = car_ad_properties_name, value = car_ad_properties_value)
+    if (nrow(car_ad_tables_names %>% filter(V1 == "Poraba goriva in emisije")) == 1) {
+      # Tabela 2: Poraba goriva
+      car_fuel_data <- 
+        car_ad_tables %>% 
+        extract2(2) %>% 
+        set_names(c("name", "value")) %>% 
+        filter(row_number() != 1) %>% 
+        mutate(value = str_squish(value)) %>%
+        mutate(name = str_remove_all(name, ":"))
+    } else {
+      car_fuel_data <- NA
+      names(car_fuel_data) <- "Poraba goriva in emisije"
+      car_fuel_data <- enframe(car_fuel_data)
+    }
     
-    suppressWarnings( # separate vrne error, kadar ni 30 vrednosti atributov
-      car_ad_properties %<>% 
-        mutate(value = str_squish(str_remove_all(value, '\r|\n|\t|<div class=\"OglasEQRightWrapper\">|</div>'))) %>% 
-        separate(value, paste0("value", 0:30), sep = '<div class=\"OglasEQRight\">- ') %>% 
-        mutate_all(str_trim) %>% 
-        select(-value0) %>%
-        pivot_longer(-name, names_to = "attribute", values_to = "value") %>% 
-        filter(!is.na(value))
-    )
+    if (nrow(car_ad_tables_names %>% filter(V1 == "Oprema in ostali podatki o ponudbi")) == 1) {
+      # Tabela 3: Oprema in ostali podatki
+      car_equipment_name <- car_ad %>% html_nodes(xpath = "//th[@class='font-weight-bold']") %>% html_text()
+      car_ad_properties <-
+        car_ad %>% html_nodes(xpath = "//ul[@class='list font-weight-normal mb-0']") %>% as.character() %>% 
+        as_tibble() %>% 
+        separate(value, paste0("value", 0:30), sep = "<li>") %T>% {options(warn = -1)} %>%
+        mutate_all(~str_squish(.)) %>%
+        bind_cols(enframe(car_equipment_name)) %>% 
+        select(-value0, -name) %>% 
+        select(name = value, value1:value30) %>%
+        mutate(name = str_remove_all(name, ":")) %>%
+        pivot_longer(cols = value1:value30, names_to = "attribute") %>%
+        mutate(value = str_remove_all(value, "\\</li\\>|\\<\\/ul\\>")) %>%
+        mutate(value = str_squish(value)) %>%
+        filter(!is.na(value))  
+    } else {
+      car_ad_properties <- NA
+      names(car_ad_properties) <- "Oprema in ostali podatki o ponudbi"
+      car_ad_properties <- enframe(car_ad_properties)
+    }
     
+
+
+    # Opomba 
     
-    # Opomba
-    car_ad_comment <- car_ad %>% html_nodes(".OglasEQtext")
+    car_ad_comment <- car_ad %>% html_nodes(xpath = "//td[@class='font-weight-normal border-top p-0 pt-3']")
     if (length(car_ad_comment) > 0) {
       car_ad_comment <- car_ad_comment %>% html_text() %>% str_remove_all("\r|\n|\t") %>% str_squish() 
     } else {
@@ -182,7 +231,7 @@ for (i in new_car_ads) {
     scrape_date <- tibble(name = "Datum uvoza", attribute = "value1", value = format(now(), "%Y%m%d"))
     
     # final loop data
-    car_ad_data_temp <- bind_rows(car_names, car_price, car_data, car_ad_properties, car_ad_comment, scrape_date) %>% mutate(id_ad = i) %>% select(id_ad, everything())
+    car_ad_data_temp <- bind_rows(car_names, car_price, car_ad_basic_fuel_data, car_ad_properties, car_ad_comment, scrape_date) %>% mutate(id_ad = i) %>% select(id_ad, everything())
     
     car_ad_data <- bind_rows(car_ad_data, car_ad_data_temp)
     
@@ -190,7 +239,7 @@ for (i in new_car_ads) {
     
   
   sleep_time <- runif(1, min = 3, max = 17)
-  message(paste("Completed:", round(counter/length(new_car_ads) * 100, 2), "%", "\nIteration number:", counter, "\nSleeping for", round(sleep_time, 0), "seconds"))
+  message(paste("Completed:", round(counter/length(new_car_ads) * 100, 2), "%", "\t\tIteration number:", counter, "\t\tAd ID:", i, "\t\tSleeping for", round(sleep_time, 0), "seconds"))
   Sys.sleep(sleep_time)
   
   counter <- counter + 1
