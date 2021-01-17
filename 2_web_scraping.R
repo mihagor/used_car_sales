@@ -1,18 +1,16 @@
-here::here()
-
+message("____________________________________________________________________________________________________________________________")
 # avto.net apliakcija za spremljanje cene karavanov in enoprostorcev
 start_time <- Sys.time()
 message("Starting avto.net web scraping ... ", start_time)
 message("Loading packages ...")
 library(pacman)
-p_load(rvest, jsonlite, tidyverse, xopen, polite, robotstxt, curl, httr, magrittr, lubridate)
+p_load(rvest, jsonlite, tidyverse, xopen, polite, robotstxt, curl, httr, magrittr, lubridate, mailR, rmarkdown)
 
 message("Working directory ...")
 if (getwd() != "/Users/mihagornik/projects/avto_net/used_car_sales") {setwd("/Users/mihagornik/projects/avto_net/used_car_sales")}
 getwd()
 # No valid robots
 # rt <- robotstxt(domain = "avto.net")
-
 
 # oblika 13 = karavan
 # oblika 14 = enoprostorec
@@ -158,11 +156,10 @@ for (i in new_car_ads) {
     car_names <- enframe(c(car_name, car_name_full)) %>% mutate(attribute = "value1") %>% select(name, attribute, value)
     
     
-    
     car_ad_tables <- car_ad %>% html_nodes(xpath = "//table[@class='table table-sm']") %>% html_table()
-    car_ad_tables_names <- car_ad_tables %>% map(~names(.)) %>% transpose(.) %>% map_dfc(~unlist(as_tibble(.))) %>% select(V1)
+    car_ad_tables_names <- car_ad_tables %>% map(~names(.)) %>% map(~extract2(., 1)) %>% unlist(.) %>% enframe(.)
     
-    if (nrow(car_ad_tables_names %>% filter(V1 == "Osnovni podatki")) == 1) {
+    if (nrow(car_ad_tables_names %>% filter(value == "Osnovni podatki")) == 1) {
       # Tabela 1: Osnovni podatki
       car_ad_basic_data <- 
         car_ad_tables %>% 
@@ -177,7 +174,7 @@ for (i in new_car_ads) {
       car_ad_basic_data <- enframe(car_ad_basic_data)
     }
     
-    if (nrow(car_ad_tables_names %>% filter(V1 == "Poraba goriva in emisije")) == 1) {
+    if (nrow(car_ad_tables_names %>% filter(value == "Poraba goriva in emisije")) == 1) {
       # Tabela 2: Poraba goriva
       car_fuel_data <- 
         car_ad_tables %>% 
@@ -192,7 +189,7 @@ for (i in new_car_ads) {
       car_fuel_data <- enframe(car_fuel_data)
     }
     
-    if (nrow(car_ad_tables_names %>% filter(V1 == "Oprema in ostali podatki o ponudbi")) == 1) {
+    if (nrow(car_ad_tables_names %>% filter(value == "Oprema in ostali podatki o ponudbi")) == 1) {
       # Tabela 3: Oprema in ostali podatki
       car_equipment_name <- car_ad %>% html_nodes(xpath = "//th[@class='font-weight-bold']") %>% html_text()
       car_ad_properties <-
@@ -231,7 +228,7 @@ for (i in new_car_ads) {
     scrape_date <- tibble(name = "Datum uvoza", attribute = "value1", value = format(now(), "%Y%m%d"))
     
     # final loop data
-    car_ad_data_temp <- bind_rows(car_names, car_price, car_ad_basic_fuel_data, car_ad_properties, car_ad_comment, scrape_date) %>% mutate(id_ad = i) %>% select(id_ad, everything())
+    car_ad_data_temp <- bind_rows(car_names, car_price, car_ad_basic_data, car_fuel_data, car_ad_properties, car_ad_comment, scrape_date) %>% mutate(id_ad = i) %>% select(id_ad, everything())
     
     car_ad_data <- bind_rows(car_ad_data, car_ad_data_temp)
     
@@ -268,3 +265,27 @@ write_csv2(all_scraped_car_ads, path = paste0("scraped_car_ads/", format(Sys.Dat
 finish_time <- Sys.time()
 message(glue::glue("Finished avto.net web scraping ... , {finish_time}\n Job took: {round(difftime(finish_time, start_time, units = 'min'))} minutes"))
 
+
+
+
+
+
+
+Sys.setenv(RSTUDIO_PANDOC = "/Applications/RStudio.app/Contents/MacOS/pandoc")
+
+render("dq_daily/dq1.Rmd",
+       output_format = pdf_document(),
+       output_file = glue::glue("{format(Sys.Date(), '%Y%m%d')}_dq1.pdf"))
+
+#source(here::here("3_dq_email.R"))
+
+send.mail(from = "<mihagornik3@gmail.com>",
+          to = "<mihagornik3@gmail.com>",
+          subject = "Avto.net daily scraping report",
+          html = TRUE,
+          inline = TRUE,
+          body = "Report in attachement",
+          smtp = list(host.name = "smtp.gmail.com", port = 465, user.name = "mihagornik3@gmail.com", passwd = "LU1uBAll5VMMx88rY1se", ssl = TRUE),
+          attach.files = file.path("dq_daily", max(list.files("dq_daily/", pattern = "pdf"))),
+          authenticate = TRUE,
+          send = TRUE)

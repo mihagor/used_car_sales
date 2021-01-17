@@ -2,3 +2,13 @@
 .Rhistory
 .RData
 .Ruserdata
+.old
+data_long
+data_wide
+dq_daily
+scraped_car_ads
+scraped_car_ids
+test.log
+temp.r
+test.r
+

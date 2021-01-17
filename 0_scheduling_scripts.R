@@ -10,5 +10,8 @@ cron_add(cmd, frequency = 'daily', id = 'job1', description = "Web scraping avto
 ## Get all the jobs
 cron_ls()
 
+## Remove 1 scheduled job
+cron_rm(id = "job2")
+
 ## Remove all scheduled jobs
 cron_clear(ask = FALSE)

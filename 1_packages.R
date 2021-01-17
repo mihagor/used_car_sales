@@ -1,2 +1,6 @@
 library(pacman)
-p_load(rvest, jsonlite, tidyverse, xopen, polite, robotstxt, curl, httr, magrittr, lubridate)
+p_load(rvest, jsonlite, tidyverse, xopen, polite, robotstxt, curl, httr, magrittr, lubridate, plotly, pander)
+p_load(data.table, mltools, keras)
+p_load(ggbeeswarm, corrplot, tictoc)
+library(tinytex)
+#tinytex::install_tinytex()

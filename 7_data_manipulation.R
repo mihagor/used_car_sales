@@ -16,20 +16,12 @@ last_car_ads_table <- read_csv2(paste0("scraped_car_ads/", max(car_ads_tables)))
 # A4 dvojni prevoženi in prva_registracija
 #last_car_ads_table %>% filter(id_ad == 15052997)
 
+tic("data manipulation for wide and long format")
 
-
-
-##### Initial data manipulation #####
-
-## TEMP because of web scraping problems (duple prevozeni_km in duple prva_registracija)
-last_car_ads_table %<>%
-   group_by(id_ad, name) %>% 
-   mutate(attribute = paste0("value", row_number())) %>% 
-   filter(!(name == "Prevoženi km" & attribute == first(attribute) | name == "Prva registracija" & attribute == last(attribute))) %>%
-   ungroup(name)
-
-
-
+##### DATA LONG #####
+tic("data long...")
+##### _Initial data manipulation #####
+last_car_ads_table %<>% filter(!is.na(id_ad))
 
 last_car_ads_table %<>% 
    mutate(name = str_replace_all(name, "š", "s")) %>%
@@ -47,11 +39,30 @@ last_car_ads_table %<>%
                               )
              )
 
+## TEMP because of web scraping problems (duple prevozeni_km in duple prva_registracija)
+error_vars <- c("prevozenih_km", "prva_registracija")
 
-last_car_ads_table %<>% filter(!is.na(id_ad))
+last_car_ads_table %<>%
+   group_by(id_ad, name) %>% 
+   mutate(attribute = row_number())
 
-##### Single value parameters #####
+error_vars_data <-
+   last_car_ads_table %>%
+   filter(name %in% error_vars) %>%
+   ungroup(name) %>%
+   filter(name == "prevozenih_km" & attribute == max(attribute) | name == "prva_registracija" & attribute == min(attribute))
 
+non_errors_vars_data <-
+   last_car_ads_table %>%
+   filter(!(name %in% error_vars)) %>%
+   ungroup(name)
+   
+
+last_car_ads_table <- bind_rows(error_vars_data, non_errors_vars_data)
+
+
+##### _Single value parameters #####
+tic("long single parameters")
 single_parameters <- c("kratek_naziv_avtomobila",
                        "dolg_naziv_avtomobila",
                        "cena",
@@ -81,10 +92,10 @@ single_parameters <- c("kratek_naziv_avtomobila",
 
 single_value_parameters <- 
       last_car_ads_table %>% filter(name %in% single_parameters) %>% 
-      group_by(id_ad, name, attribute) %>% filter(row_number() == max(row_number())) %>% # duplikati so na prevoženih kilometrih - pravi podatek je zadnji podatek
+      group_by(id_ad, name, attribute) %>% #filter(row_number() == max(row_number())) %>% # duplikati so na prevoženih kilometrih - pravi podatek je zadnji podatek
       pivot_wider(id_cols = id_ad, names_from = name, values_from = value) %>% 
       select(id_ad, single_parameters)
-
+   
 single_value_parameters %<>% 
    mutate(letnik_proizvodnje = parse_date_time(letnik_proizvodnje, "Y"), quiet = TRUE) %>%
    mutate(datum_uvoza = ymd(datum_uvoza), quiet = TRUE) 
@@ -123,8 +134,10 @@ single_value_parameters_long <-
       mutate(value_property = NA_character_) %>%
       select(!!sort_vars)
 
+toc()
 
-##### Multi value parameters ####
+##### _Multi value parameters ####
+tic("long multi parameters")
 
 multi_value_parameters_long <- 
    last_car_ads_table %>% 
@@ -144,12 +157,120 @@ multi_value_parameters_long <-
       mutate(parameter_group = "multi") %>%
       select(!!sort_vars)
 
+toc()
 
-
-##### Bind parameters ####
+##### _Save ####
 all_parameters <- bind_rows(single_value_parameters_long, multi_value_parameters_long)
 
-write_csv2(all_parameters, path = paste0("data_manipulation/", format(Sys.Date(), "%Y%m%d"), "_data_manipulation.csv"), col_names = TRUE)
+write_csv2(all_parameters, path = paste0("data_long/", format(Sys.Date(), "%Y%m%d"), "_data_long.csv"), col_names = TRUE)
+
+toc()
 
 
+
+
+
+
+
+
+
+
+
+
+
+##### DATA  WIDE #####
+tic("data wide")
+
+##### _Single value parameters ####
+tic("wide single parameters")
+
+single <- 
+   all_parameters %>% 
+   filter(parameter_group == "single") %>%
+   pivot_wider(id_cols = "id_ad", names_from = "attribute", values_from = "value")
+
+
+# Data definition
+numeric <- c("id_ad", "cena", "letnik_proizvodnje", "prevozenih_km", "motor_ccm", "motor_kw", "motor_km", 
+             "kombinirana_voznja", "izvenmestna_voznja", "mestna_voznja", "emisija_co2")
+date <- c("prva_registracija", "tehnicni_pregled", "datum_uvoza")
+string <- names(data)[!(names(data) %in% c(numeric, date))]
+
+## Check if all remaining really are strings
+# single %>% 
+#    select(!!string) %>%
+#    glimpse()
+
+single %<>%
+   mutate_at(vars(numeric), ~as.numeric(.)) %>%
+   mutate_at(vars(date), ~parse_date_time(., "Y-m-d")) %>%
+   mutate(menjalnik = str_extract(menjalnik, "ročni menjalnik|avtomatski menjalnik"))
+
+# One hot encode gorivo in menjalnik
+gorivo <- single %>% distinct(gorivo) %>% mutate(gorivo = str_replace_all(tolower(gorivo), " ", "_")) %>% filter(!is.na(gorivo)) %>% pull(1)
+menjalnik <- single %>% distinct(menjalnik) %>% mutate(menjalnik = str_replace_all(tolower(menjalnik), " ", "_")) %>% filter(!is.na(menjalnik)) %>% pull(1)
+
+gorivo_wide <- 
+   single %>%
+   mutate(gorivo = str_replace_all(tolower(gorivo), " ", "_")) %>%
+   pivot_wider(id_cols = "id_ad", names_from = "gorivo", values_from = "gorivo") %>%
+   select(-`NA`) %>%
+   mutate_at(vars(gorivo), ~if_else(is.na(.), 0, 1))
+
+menjalnik_wide <- 
+   single %>%
+   mutate(menjalnik = str_replace_all(tolower(menjalnik), " ", "_")) %>%
+   pivot_wider(id_cols = "id_ad", names_from = "menjalnik", values_from = "menjalnik") %>%
+   mutate_at(vars(menjalnik), ~if_else(is.na(.), 0, 1))
+
+single %<>%
+   select(-gorivo, -menjalnik) %>%
+   left_join(gorivo_wide, by = "id_ad") %>%
+   left_join(menjalnik_wide, by = "id_ad")
+
+toc()
+
+##### _Multi value parameters ####
+tic("wide multi parameters")
+
+multi <- 
+   all_parameters %>% 
+   filter(parameter_group == "multi") %>%
+   mutate(name = str_replace_all(name, "[^[:alnum:]]", "_")) %>%
+   mutate(name = str_replace_all(name, c("_{2,}" = "_", "š" = "s", "č" = "c", "ž" = "z"))) %>%
+   mutate(attribute = str_replace_all(attribute, c("š" = "s", "č" = "c", "ž" = "z"))) %>%
+   mutate(name = str_remove(name, "_$")) %>% 
+   mutate(name = tolower(name)) %>%
+   mutate(dummy_value_property = case_when(attribute == "multimedia" ~ NA_character_,
+                                           value == "lahka - ALU platišča" ~ NA_character_,
+                                           TRUE ~ value_property)) %>%
+   mutate(dummy_value_property = str_replace_all(dummy_value_property, "[^[:alnum:]]", "_")) %>%
+   mutate(dummy_value_property = str_replace_all(dummy_value_property, c("_{2,}" = "_", "š" = "s", "č" = "c", "ž" = "z"))) %>%
+   mutate(dummy_value_property = str_remove(dummy_value_property, "_$")) %>% 
+   mutate(dummy_value_property = tolower(dummy_value_property)) %>%
+   unite(name, attribute, name, dummy_value_property, sep = "_", remove = FALSE, na.rm = TRUE) %>%
+   mutate(dummy_value_property = 1)
+
+
+multi %<>%
+   group_by(id_ad) %>%
+   filter(!(duplicated(name))) %>% ## odstranimo duplikate na drsnih vratah (2x vnešena že v oglasu)
+   pivot_wider(id_cols = "id_ad", names_from = "name", values_from = "dummy_value_property")
+
+#multi %<>%
+#   mutate_all(~replace_na(., 0))
+
+# Whole data
+data_wide <- 
+   left_join(single, multi, by = "id_ad")
+
+toc()
+
+#### _Save ####
+write_csv2(data_wide, path = paste0("data_wide/", format(Sys.Date(), "%Y%m%d"), "_data_wide.csv"), col_names = TRUE)
+
+
+toc() # data wide
+
+toc() # total
 
